@@ -4212,9 +4212,25 @@ const configPage = `
                 <p class="mt-1 text-sm text-gray-500">JSON格式的自定义请求头，留空使用默认</p>
               </div>
               <div>
+                <label for="webhookTemplateStyle" class="block text-sm font-medium text-gray-700">模板风格</label>
+                <select id="webhookTemplateStyle" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                  <option value="">自定义</option>
+                  <option value="simple">简洁版</option>
+                  <option value="standard">标准版</option>
+                  <option value="detailed">详细版</option>
+                </select>
+              </div>
+              <div>
                 <label for="webhookTemplate" class="block text-sm font-medium text-gray-700">消息模板 (JSON格式，可选)</label>
-                <textarea id="webhookTemplate" rows="4" placeholder='{"title": "{{title}}", "content": "{{content}}", "timestamp": "{{timestamp}}"}' class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
-                <p class="mt-1 text-sm text-gray-500">支持变量: {{title}}, {{content}}, {{timestamp}}。留空使用默认格式</p>
+                <textarea id="webhookTemplate" rows="4" placeholder='{"title": "{{title}}", "content": "{{content}}", "timestamp": "{{timestamp}}"}' class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono text-xs"></textarea>
+                <div id="webhookPreview" class="mt-2 hidden">
+                  <p class="text-xs text-gray-500 mb-1">模板预览：</p>
+                  <pre id="webhookPreviewContent" class="text-xs bg-gray-50 p-2 rounded overflow-x-auto text-green-600 font-mono"></pre>
+                </div>
+                <details class="mt-2">
+                  <summary class="text-xs text-gray-500 cursor-pointer hover:text-indigo-500">支持变量 ▾</summary>
+                  <p class="text-xs text-gray-500 mt-1 pl-2 border-l-2 border-gray-200">{{title}}, {{content}}, {{timestamp}}, {{tagsLine}}, {{amount}}, {{currency}}, {{calendarType}}, {{autoRenew}}, {{status}}</p>
+                </details>
               </div>
             </div>
             <div class="flex justify-end">
@@ -4722,6 +4738,80 @@ const configPage = `
     document.getElementById('testBarkBtn').addEventListener('click', () => {
       testNotification('bark');
     });
+
+    const webhookTemplateStyle = document.getElementById('webhookTemplateStyle');
+    const webhookTemplate = document.getElementById('webhookTemplate');
+    const webhookPreview = document.getElementById('webhookPreview');
+    const webhookPreviewContent = document.getElementById('webhookPreviewContent');
+
+    const templatePresets = {
+      simple: '{"title": "{{title}}", "content": "{{content}}", "time": "{{timestamp}}"}',
+      standard: '{"title": "{{title}}", "content": "{{content}}", "tags": "{{tagsLine}}", "time": "{{timestamp}}"}',
+      detailed: '{"title": "{{title}}", "content": "{{content}}", "amount": "{{amount}}", "currency": "{{currency}}", "status": "{{status}}", "time": "{{timestamp}}"}'
+    };
+
+    const previewSample = {
+      title: '订阅到期提醒',
+      content: 'Netflix 将在 5 天后到期\n金额: ¥45.00/月',
+      tagsLine: '标签：视频、娱乐',
+      timestamp: '2026-02-06 16:30:00',
+      amount: '45.00',
+      currency: '¥',
+      status: '即将到期'
+    };
+
+    function escapeJson(str) {
+      return JSON.stringify(str).slice(1, -1);
+    }
+
+    function renderPreview(template) {
+      try {
+        const parsed = JSON.parse(template);
+        const preview = {};
+        for (const key in parsed) {
+          const value = parsed[key];
+          if (typeof value === 'string' && value.includes('{{')) {
+            const varMatch = value.match(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/);
+            if (varMatch) {
+              preview[key] = previewSample[varMatch[1]] !== undefined ? escapeJson(previewSample[varMatch[1]]) : '';
+            } else {
+              preview[key] = value;
+            }
+          } else {
+            preview[key] = value;
+          }
+        }
+        webhookPreviewContent.textContent = JSON.stringify(preview, null, 2);
+        webhookPreview.classList.remove('hidden');
+      } catch (e) {
+        webhookPreviewContent.textContent = '模板格式错误';
+        webhookPreview.classList.remove('hidden');
+      }
+    }
+
+    if (webhookTemplateStyle && webhookTemplate) {
+      webhookTemplateStyle.addEventListener('change', () => {
+        const style = webhookTemplateStyle.value;
+        if (style && templatePresets[style]) {
+          webhookTemplate.value = templatePresets[style];
+          renderPreview(templatePresets[style]);
+        }
+      });
+
+      webhookTemplate.addEventListener('input', () => {
+        const template = webhookTemplate.value.trim();
+        if (template) {
+          renderPreview(template);
+        } else {
+          webhookPreview.classList.add('hidden');
+        }
+        webhookTemplateStyle.value = '';
+      });
+
+      if (webhookTemplate.value.trim()) {
+        renderPreview(webhookTemplate.value.trim());
+      }
+    }
 
     document.getElementById('generateThirdPartyToken').addEventListener('click', () => {
       try {
@@ -6525,6 +6615,32 @@ async function testSingleSubscriptionNotification(id, env) {
   }
 }
 
+function parseSubscriptionInfo(content) {
+  const info = { amount: '', currency: '', calendarType: '', autoRenew: '', status: '' };
+  const amountMatch = content.match(/金额[:：]\s*([^\n]+)/);
+  if (amountMatch) {
+    const amountStr = amountMatch[1].trim();
+    const currencyMatch = amountStr.match(/([¥$€£¥])?\s*([\d.]+)/);
+    if (currencyMatch) {
+      info.currency = currencyMatch[1] || '';
+      info.amount = currencyMatch[2] || '';
+    }
+  }
+
+  const calendarMatch = content.match(/日历类型[:：]\s*([^\n]+)/);
+  if (calendarMatch) info.calendarType = calendarMatch[1].trim();
+
+  const autoRenewMatch = content.match(/自动续期[:：]\s*([^\n]+)/);
+  if (autoRenewMatch) info.autoRenew = autoRenewMatch[1].trim();
+
+  if (content.includes('今天到期')) info.status = '今天到期';
+  else if (content.includes('已过期')) info.status = '已过期';
+  else if (content.includes('后天到期')) info.status = '即将到期';
+  else if (content.includes('天后到期')) info.status = '即将到期';
+
+  return info;
+}
+
 async function sendWebhookNotification(title, content, config, metadata = {}) {
   try {
     if (!config.WEBHOOK_URL) {
@@ -6557,6 +6673,10 @@ async function sendWebhookNotification(title, content, config, metadata = {}) {
       .filter(section => section && section.trim().length > 0)
       .join('\n\n');
 
+    // 解析 content 中的订阅信息用于模板变量
+    const subscriptionInfo = parseSubscriptionInfo(content);
+    const timezone = config?.TIMEZONE || 'UTC';
+
     const templateData = {
       title,
       content,
@@ -6565,7 +6685,12 @@ async function sendWebhookNotification(title, content, config, metadata = {}) {
       rawTags: tagsArray,
       timestamp,
       formattedMessage,
-      message: formattedMessage
+      message: formattedMessage,
+      amount: subscriptionInfo.amount || '',
+      currency: subscriptionInfo.currency || '',
+      calendarType: subscriptionInfo.calendarType || '',
+      autoRenew: subscriptionInfo.autoRenew || '',
+      status: subscriptionInfo.status || ''
     };
 
     const escapeForJson = (value) => {
@@ -6983,25 +7108,62 @@ async function sendEmailNotification(title, content, config) {
 
     console.log('[邮件通知] 开始发送邮件到: ' + config.EMAIL_TO);
 
-    // 生成HTML邮件内容
+    const timezone = config?.TIMEZONE || 'UTC';
+    const currentTime = formatTimeInTimezone(new Date(), timezone, 'datetime');
+
+    // 解析 content 生成卡片 HTML
+    const cardsHtml = generateEmailCardsHtml(content);
+
+    // 生成HTML邮件内容（卡片式布局）
     const htmlContent = `
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${title}</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; }
-        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px 20px; text-align: center; }
-        .header h1 { color: white; margin: 0; font-size: 24px; }
-        .content { padding: 30px 20px; }
-        .content h2 { color: #333; margin-top: 0; }
-        .content p { color: #666; line-height: 1.6; margin: 16px 0; }
-        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 14px; }
-        .highlight { background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0; }
-        .button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+        :root {
+            --primary-color: #667eea;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --bg-light: #f8fafc;
+            --bg-dark: #1f2937;
+            --card-bg-light: #ffffff;
+            --card-bg-dark: #374151;
+            --text-primary-light: #1f2937;
+            --text-primary-dark: #f3f4f6;
+            --text-secondary-light: #6b7280;
+            --text-secondary-dark: #9ca3af;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #f3f4f6; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px 30px; text-align: center; }
+        .header h1 { color: white; margin: 0; font-size: 20px; font-weight: 600; }
+        .content { padding: 20px 30px; }
+        .card { background-color: #f8fafc; border-radius: 8px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #667eea; }
+        .card.warning { border-left-color: #f59e0b; background-color: #fffbeb; }
+        .card.danger { border-left-color: #ef4444; background-color: #fef2f2; }
+        .card-title { font-size: 17px; font-weight: 600; color: #1f2937; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .card-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .card-label { color: #6b7280; font-size: 14px; }
+        .card-value { color: #1f2937; font-size: 14px; font-weight: 500; }
+        .card-value.amount { color: #10b981; font-weight: 600; }
+        .footer { background-color: #f8fafc; padding: 14px 30px; text-align: center; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb; }
+        @media (prefers-color-scheme: dark) {
+            body { background-color: #1f2937 !important; }
+            .container { background-color: #374151 !important; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+            .header { background: linear-gradient(135deg, #4f46e5 0%, #6b21a8 100%) !important; }
+            .header h1 { color: #f9fafb !important; }
+            .card { background-color: #1f2937 !important; border-color: #374151 !important; }
+            .card.warning { background-color: #451a03 !important; }
+            .card.danger { background-color: #450a0a !important; }
+            .card-title { color: #f3f4f6 !important; }
+            .card-label { color: #9ca3af !important; }
+            .card-value { color: #e5e7eb !important; }
+            .card-value.amount { color: #34d399 !important; }
+            .footer { background-color: #1f2937 !important; color: #6b7280 !important; border-color: #374151 !important; }
+        }
     </style>
 </head>
 <body>
@@ -7010,13 +7172,10 @@ async function sendEmailNotification(title, content, config) {
             <h1>📅 ${title}</h1>
         </div>
         <div class="content">
-            <div class="highlight">
-                ${content.replace(/\n/g, '<br>')}
-            </div>
-            <p>此邮件由订阅管理系统自动发送，请及时处理相关订阅事务。</p>
+            ${cardsHtml}
         </div>
         <div class="footer">
-            <p>订阅管理系统 | 发送时间: ${formatTimeInTimezone(new Date(), config?.TIMEZONE || 'UTC', 'datetime')}</p>
+            <p>发送时间: ${currentTime}</p>
         </div>
     </div>
 </body>
@@ -7037,7 +7196,7 @@ async function sendEmailNotification(title, content, config) {
         to: config.EMAIL_TO,
         subject: title,
         html: htmlContent,
-        text: content // 纯文本备用
+        text: content.replace(/<[^>]*>/g, '')
       })
     });
 
@@ -7055,6 +7214,58 @@ async function sendEmailNotification(title, content, config) {
     console.error('[邮件通知] 发送邮件失败:', error);
     return false;
   }
+}
+
+// 生成邮件卡片 HTML
+function generateEmailCardsHtml(content) {
+  const cards = [];
+  const sections = content.split(/\n\n+/);
+
+  for (const section of sections) {
+    if (section.startsWith('发送时间:')) continue;
+    if (section.startsWith('当前时区:')) continue;
+
+    const statusMatch = section.match(/^([⚠️🚨📅]) \*\*(.+?)\*\*/);
+    if (statusMatch) {
+      const card = {
+        emoji: statusMatch[1],
+        title: statusMatch[2],
+        info: []
+      };
+      const lines = section.split('\n').slice(1);
+      for (const line of lines) {
+        const colonIndex = line.indexOf(':');
+        if (colonIndex > 0) {
+          card.info.push({
+            label: line.substring(0, colonIndex).trim(),
+            value: line.substring(colonIndex + 1).trim()
+          });
+        }
+      }
+      cards.push(card);
+    }
+  }
+
+  if (cards.length === 0) {
+    return `<p style="color: #6b7280; text-align: center;">${content.split('\n')[0]}</p>`;
+  }
+
+  let html = '';
+  for (const card of cards) {
+    const cardClass = card.emoji === '⚠️' ? 'warning' : (card.emoji === '🚨' ? 'danger' : '');
+    let infoHtml = '';
+    for (const item of card.info) {
+      const valueClass = item.label.includes('金额') ? 'amount' : '';
+      infoHtml += `<div class="card-row"><span class="card-label">${item.label}</span><span class="card-value ${valueClass}">${item.value}</span></div>`;
+    }
+    html += `
+        <div class="card ${cardClass}">
+            <div class="card-title">${card.emoji} ${card.title}</div>
+            ${infoHtml}
+        </div>`;
+  }
+
+  return html;
 }
 
 async function sendNotification(title, content, description, config) {
