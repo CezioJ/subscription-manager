@@ -7111,10 +7111,16 @@ async function sendEmailNotification(title, content, config) {
     const timezone = config?.TIMEZONE || 'UTC';
     const currentTime = formatTimeInTimezone(new Date(), timezone, 'datetime');
 
-    // 解析 content 生成卡片 HTML
-    const cardsHtml = generateEmailCardsHtml(content);
+    // 从 content 中提取备注信息
+    const notesMatch = content.match(/备注[:：]\s*([^\n]+)/);
+    const notesText = notesMatch ? notesMatch[1].trim() : '';
 
-    // 生成HTML邮件内容（卡片式布局）
+    // 如果没有备注或备注为"无"，则显示默认提示
+    const bodyContent = notesText && notesText !== '无'
+      ? `<div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin: 0; border-left: 4px solid #667eea; font-size: 15px; line-height: 1.6; color: #374151;">${notesText.replace(/\n/g, '<br>')}</div>`
+      : '<p style="color: #6b7280; text-align: center; padding: 20px;">暂无备注信息</p>';
+
+    // 生成HTML邮件内容
     const htmlContent = `
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -7125,8 +7131,6 @@ async function sendEmailNotification(title, content, config) {
     <style>
         :root {
             --primary-color: #667eea;
-            --warning-color: #f59e0b;
-            --danger-color: #ef4444;
             --bg-light: #f8fafc;
             --bg-dark: #1f2937;
             --card-bg-light: #ffffff;
@@ -7138,30 +7142,16 @@ async function sendEmailNotification(title, content, config) {
         }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #f3f4f6; }
         .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px 30px; text-align: center; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 30px; text-align: center; }
         .header h1 { color: white; margin: 0; font-size: 20px; font-weight: 600; }
-        .content { padding: 20px 30px; }
-        .card { background-color: #f8fafc; border-radius: 8px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #667eea; }
-        .card.warning { border-left-color: #f59e0b; background-color: #fffbeb; }
-        .card.danger { border-left-color: #ef4444; background-color: #fef2f2; }
-        .card-title { font-size: 17px; font-weight: 600; color: #1f2937; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
-        .card-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
-        .card-label { color: #6b7280; font-size: 14px; }
-        .card-value { color: #1f2937; font-size: 14px; font-weight: 500; }
-        .card-value.amount { color: #10b981; font-weight: 600; }
-        .footer { background-color: #f8fafc; padding: 14px 30px; text-align: center; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb; }
+        .content { padding: 30px; }
+        .footer { background-color: #f8fafc; padding: 16px 30px; text-align: center; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb; }
         @media (prefers-color-scheme: dark) {
             body { background-color: #1f2937 !important; }
-            .container { background-color: #374151 !important; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+            .container { background-color: #374151 !important; }
             .header { background: linear-gradient(135deg, #4f46e5 0%, #6b21a8 100%) !important; }
             .header h1 { color: #f9fafb !important; }
-            .card { background-color: #1f2937 !important; border-color: #374151 !important; }
-            .card.warning { background-color: #451a03 !important; }
-            .card.danger { background-color: #450a0a !important; }
-            .card-title { color: #f3f4f6 !important; }
-            .card-label { color: #9ca3af !important; }
-            .card-value { color: #e5e7eb !important; }
-            .card-value.amount { color: #34d399 !important; }
+            .content div { background-color: #1f2937 !important; border-color: #4b5563 !important; color: #e5e7eb !important; }
             .footer { background-color: #1f2937 !important; color: #6b7280 !important; border-color: #374151 !important; }
         }
     </style>
@@ -7172,7 +7162,7 @@ async function sendEmailNotification(title, content, config) {
             <h1>📅 ${title}</h1>
         </div>
         <div class="content">
-            ${cardsHtml}
+            ${bodyContent}
         </div>
         <div class="footer">
             <p>发送时间: ${currentTime}</p>
@@ -7196,7 +7186,7 @@ async function sendEmailNotification(title, content, config) {
         to: config.EMAIL_TO,
         subject: title,
         html: htmlContent,
-        text: content.replace(/<[^>]*>/g, '')
+        text: notesText || '订阅提醒'
       })
     });
 
