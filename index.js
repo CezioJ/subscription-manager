@@ -7115,79 +7115,59 @@ async function sendEmailNotification(title, content, config) {
     const notesMatch = content.match(/备注[:：]\s*([^\n]+)/);
     const notesText = notesMatch ? notesMatch[1].trim() : '';
 
-    // 备注内容处理
-    const notesContent = notesText && notesText !== '无'
-      ? notesText.replace(/\n/g, '<br>')
-      : '暂无备注信息';
+    // 如果没有备注或备注为"无"，则显示默认提示
+    const bodyContent = notesText && notesText !== '无'
+      ? `<div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin: 0; border-left: 4px solid #667eea; font-size: 15px; line-height: 1.6; color: #374151;">${notesText.replace(/\n/g, '<br>')}</div>`
+      : '<p style="color: #6b7280; text-align: center; padding: 20px;">暂无备注信息</p>';
 
-    // 生成HTML邮件内容（表格布局）
-    const htmlContent = `<!DOCTYPE html>
+    // 生成HTML邮件内容
+    const htmlContent = `
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${title}</title>
     <style>
-        /* 基础复位 */
-        html, body { margin: 0 auto !important; padding: 0 !important; height: 100% !important; width: 100% !important; background-color: #f8f9fa; }
-        * { -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
-        table, td { mso-table-lspace: 0pt !important; mso-table-rspace: 0pt !important; }
-        img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
-
-        /* 响应式样式 */
-        @media screen and (max-width: 600px) {
-            .email-container { width: 100% !important; margin: auto !important; }
+        :root {
+            --primary-color: #667eea;
+            --bg-light: #f8fafc;
+            --bg-dark: #1f2937;
+            --card-bg-light: #ffffff;
+            --card-bg-dark: #374151;
+            --text-primary-light: #1f2937;
+            --text-primary-dark: #f3f4f6;
+            --text-secondary-light: #6b7280;
+            --text-secondary-dark: #9ca3af;
         }
-
-        /* 暗黑模式适配 */
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #f3f4f6; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 30px; text-align: center; }
+        .header h1 { color: white; margin: 0; font-size: 20px; font-weight: 600; }
+        .content { padding: 30px; }
+        .footer { background-color: #f8fafc; padding: 16px 30px; text-align: center; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb; }
         @media (prefers-color-scheme: dark) {
-            body { background-color: #1a1a1a !important; }
-            .email-container { background-color: #2d2d2d !important; border-color: #444 !important; }
-            .text-primary { color: #ffffff !important; }
-            .text-secondary { color: #b0b0b0 !important; }
-            .content-block { background-color: #383838 !important; }
-            .footer { background-color: #1f2937 !important; border-color: #374151 !important; color: #9ca3af !important; }
+            body { background-color: #1f2937 !important; }
+            .container { background-color: #374151 !important; }
+            .header { background: linear-gradient(135deg, #4f46e5 0%, #6b21a8 100%) !important; }
+            .header h1 { color: #f9fafb !important; }
+            .content div { background-color: #1f2937 !important; border-color: #4b5563 !important; color: #e5e7eb !important; }
+            .footer { background-color: #1f2937 !important; color: #6b7280 !important; border-color: #374151 !important; }
         }
     </style>
 </head>
-<body width="100%" style="margin: 0; padding: 0 !important; mso-line-height-rule: exactly; background-color: #f8f9fa;">
-    <center role="article" style="width: 100%; background-color: #f8f9fa;">
-        <!-- 预览文本 -->
-        <div style="display: none; font-size: 1px; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden; mso-hide: all; font-family: sans-serif;">
-            ${title}
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📅 ${title}</h1>
         </div>
-
-        <table align="center" role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="margin: auto; background-color: #ffffff; border: 1px solid #e0e0e0;" class="email-container">
-            <!-- 头部 -->
-            <tr>
-                <td style="padding: 30px 40px 20px 40px; text-align: left;">
-                    <h1 class="text-primary" style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 20px; line-height: 28px; color: #111827; font-weight: 600;">
-                        📅 ${title}
-                    </h1>
-                </td>
-            </tr>
-
-            <!-- 主体内容 -->
-            <tr>
-                <td style="padding: 0 40px 30px 40px; text-align: left; font-family: sans-serif; font-size: 16px; line-height: 24px; color: #4b5563;" class="text-secondary">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f3f4f6; border-radius: 8px;" class="content-block">
-                        <tr>
-                            <td style="padding: 20px;">
-                                <p style="margin: 0 0 16px; color: #4b5563; font-size: 15px; line-height: 1.6;">${notesContent}</p>
-                            </td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-
-            <!-- 页脚 -->
-            <tr>
-                <td style="padding: 20px 40px; background-color: #f9fafb; text-align: center; font-family: sans-serif; font-size: 12px; line-height: 20px; color: #9ca3af; border-top: 1px solid #e5e7eb;" class="footer">
-                    <p style="margin: 0;">发送时间: ${currentTime}</p>
-                </td>
-            </tr>
-        </table>
-    </center>
+        <div class="content">
+            ${bodyContent}
+        </div>
+        <div class="footer">
+            <p>发送时间: ${currentTime}</p>
+        </div>
+    </div>
 </body>
 </html>`;
 
