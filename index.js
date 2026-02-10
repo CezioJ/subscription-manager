@@ -33,24 +33,28 @@ function convertUTCToTimezone(utcTime, timezone = 'Asia/Shanghai') {
 // 获取指定时区的年/月/日/时/分/秒，便于避免重复的 Intl 解析逻辑
 function getTimezoneDateParts(date, timezone = 'Asia/Shanghai') {
   try {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour12: false,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
-    const parts = formatter.formatToParts(date);
-    const pick = (type) => {
-      const part = parts.find(item => item.type === type);
-      return part ? Number(part.value) : 0;
+    // Cloudflare Workers 生产环境强制使用 UTC，需要手动计算时区偏移
+    const timezoneOffsets = {
+      'Asia/Shanghai': 8,
+      'Asia/Hong_Kong': 8,
+      'Asia/Taipei': 8,
+      'Asia/Singapore': 8,
+      'Asia/Tokyo': 9,
+      'Asia/Seoul': 9,
+      'UTC': 0
     };
+    
+    const offsetHours = timezoneOffsets[timezone] || 0;
+    const utcTime = date.getTime();
+    const localTime = new Date(utcTime + (offsetHours * 60 * 60 * 1000));
+    
     return {
-      year: pick('year'),
-      month: pick('month'),
-      day: pick('day'),
-      hour: pick('hour'),
-      minute: pick('minute'),
-      second: pick('second')
+      year: localTime.getUTCFullYear(),
+      month: localTime.getUTCMonth() + 1,
+      day: localTime.getUTCDate(),
+      hour: localTime.getUTCHours(),
+      minute: localTime.getUTCMinutes(),
+      second: localTime.getUTCSeconds()
     };
   } catch (error) {
     console.error(`解析时区(${timezone})失败: ${error.message}`);
@@ -75,28 +79,36 @@ function formatTimeInTimezone(time, timezone = 'Asia/Shanghai', format = 'full')
   try {
     const date = new Date(time);
     
+    // Cloudflare Workers 生产环境强制使用 UTC，需要手动计算时区偏移
+    // 北京时间 (Asia/Shanghai) = UTC+8
+    const timezoneOffsets = {
+      'Asia/Shanghai': 8,
+      'Asia/Hong_Kong': 8,
+      'Asia/Taipei': 8,
+      'Asia/Singapore': 8,
+      'Asia/Tokyo': 9,
+      'Asia/Seoul': 9,
+      'UTC': 0
+    };
+    
+    const offsetHours = timezoneOffsets[timezone] || 0;
+    const utcTime = date.getTime();
+    const localTime = new Date(utcTime + (offsetHours * 60 * 60 * 1000));
+    
+    const year = localTime.getUTCFullYear();
+    const month = String(localTime.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(localTime.getUTCDate()).padStart(2, '0');
+    const hour = String(localTime.getUTCHours()).padStart(2, '0');
+    const minute = String(localTime.getUTCMinutes()).padStart(2, '0');
+    const second = String(localTime.getUTCSeconds()).padStart(2, '0');
+    
     if (format === 'date') {
-      return date.toLocaleDateString('zh-CN', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      });
+      return `${year}/${month}/${day}`;
     } else if (format === 'datetime') {
-      return date.toLocaleString('zh-CN', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
+      return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
     } else {
       // full format
-      return date.toLocaleString('zh-CN', {
-        timeZone: timezone
-      });
+      return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
     }
   } catch (error) {
     console.error(`时间格式化错误: ${error.message}`);
@@ -7295,8 +7307,9 @@ async function checkExpiringSubscriptions(env) {
       .map(value => value === '*' ? '*' : value.toUpperCase() === 'ALL' ? 'ALL' : value.padStart(2, '0'));
     
     const allowAllHours = normalizedNotificationHours.includes('*') || normalizedNotificationHours.includes('ALL');
-    const hourFormatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour12: false, hour: '2-digit' });
-    const currentHour = hourFormatter.format(currentTime);
+    // 使用 getTimezoneDateParts 获取当前小时（已修复时区问题）
+    const currentHourParts = getTimezoneDateParts(currentTime, timezone);
+    const currentHour = String(currentHourParts.hour).padStart(2, '0');
     const shouldNotifyThisHour = allowAllHours || normalizedNotificationHours.length === 0 || normalizedNotificationHours.includes(currentHour);
 
     const subscriptions = await getAllSubscriptions(env);
@@ -7621,7 +7634,7 @@ export default {
       const testTitle = '订阅到期/续费提醒';
       const testNotes = '您的 Netflix 订阅将在3天后到期，请及时续费。\n当前套餐：高级版 (4屏)\n到期日期：2026-02-13';
       const timezone = 'Asia/Shanghai';
-      const currentTime = new Date().toLocaleString('zh-CN', { timeZone: timezone });
+      const currentTime = formatTimeInTimezone(new Date(), timezone, 'datetime');
       
       const formatNotesToParagraphs = (text) => {
         if (!text || text.trim() === '') return '<p style="color: #6b7280; text-align: center; padding: 20px;">暂无备注信息</p>';
@@ -7770,7 +7783,8 @@ export default {
     const config = await getConfig(env);
     const timezone = config?.TIMEZONE || 'Asia/Shanghai';
     const currentTime = getCurrentTimeInTimezone(timezone);
-    console.log('[Workers] 定时任务触发 UTC:', new Date().toISOString(), timezone + ':', currentTime.toLocaleString('zh-CN', {timeZone: timezone}));
+    const formattedTime = formatTimeInTimezone(currentTime, timezone, 'datetime');
+    console.log('[Workers] 定时任务触发 UTC:', new Date().toISOString(), timezone + ':', formattedTime);
     await checkExpiringSubscriptions(env);
   }
 };
