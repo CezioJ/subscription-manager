@@ -17,8 +17,8 @@ id = "7c10ca7e173c4dc39f7f4098220ef219"
 
 # 定时任务配置 - 每天早上8点检查
 [triggers]
-crons = ["0 8 * * *"]
+crons = ["0 0 * * *"]
 
-# 环境变量（可选，也可以在 Cloudflare Dashboard 中设置）
-[vars]
-ENVIRONMENT = "production"
+# 环境变量说明：
+# 生产环境变量请在 Cloudflare Dashboard 中设置，不要在此文件中添加敏感信息
+# 本地开发可以使用 .env 文件或 wrangler dev 时临时设置

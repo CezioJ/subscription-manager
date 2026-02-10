@@ -5,7 +5,7 @@
 const MS_PER_HOUR = 1000 * 60 * 60;
 const MS_PER_DAY = MS_PER_HOUR * 24;
 
-function getCurrentTimeInTimezone(timezone = 'UTC') {
+function getCurrentTimeInTimezone(timezone = 'Asia/Shanghai') {
   try {
     // Workers 环境下 Date 始终存储 UTC 时间，这里直接返回当前时间对象
     return new Date();
@@ -16,11 +16,11 @@ function getCurrentTimeInTimezone(timezone = 'UTC') {
   }
 }
 
-function getTimestampInTimezone(timezone = 'UTC') {
+function getTimestampInTimezone(timezone = 'Asia/Shanghai') {
   return getCurrentTimeInTimezone(timezone).getTime();
 }
 
-function convertUTCToTimezone(utcTime, timezone = 'UTC') {
+function convertUTCToTimezone(utcTime, timezone = 'Asia/Shanghai') {
   try {
     // 同 getCurrentTimeInTimezone，一律返回 Date 供后续统一处理
     return new Date(utcTime);
@@ -31,7 +31,7 @@ function convertUTCToTimezone(utcTime, timezone = 'UTC') {
 }
 
 // 获取指定时区的年/月/日/时/分/秒，便于避免重复的 Intl 解析逻辑
-function getTimezoneDateParts(date, timezone = 'UTC') {
+function getTimezoneDateParts(date, timezone = 'Asia/Shanghai') {
   try {
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
@@ -66,12 +66,12 @@ function getTimezoneDateParts(date, timezone = 'UTC') {
 }
 
 // 计算指定日期在目标时区的午夜时间戳（毫秒），用于统一的“剩余天数”计算
-function getTimezoneMidnightTimestamp(date, timezone = 'UTC') {
+function getTimezoneMidnightTimestamp(date, timezone = 'Asia/Shanghai') {
   const { year, month, day } = getTimezoneDateParts(date, timezone);
   return Date.UTC(year, month - 1, day, 0, 0, 0);
 }
 
-function formatTimeInTimezone(time, timezone = 'UTC', format = 'full') {
+function formatTimeInTimezone(time, timezone = 'Asia/Shanghai', format = 'full') {
   try {
     const date = new Date(time);
     
@@ -104,7 +104,7 @@ function formatTimeInTimezone(time, timezone = 'UTC', format = 'full') {
   }
 }
 
-function getTimezoneOffset(timezone = 'UTC') {
+function getTimezoneOffset(timezone = 'Asia/Shanghai') {
   try {
     const now = new Date();
     const { year, month, day, hour, minute, second } = getTimezoneDateParts(now, timezone);
@@ -117,7 +117,7 @@ function getTimezoneOffset(timezone = 'UTC') {
 }
 
 // 格式化时区显示，包含UTC偏移
-function formatTimezoneDisplay(timezone = 'UTC') {
+function formatTimezoneDisplay(timezone = 'Asia/Shanghai') {
   try {
     const offset = getTimezoneOffset(timezone);
     const offsetStr = offset >= 0 ? `+${offset}` : `${offset}`;
@@ -186,8 +186,8 @@ function extractTimezone(request) {
     }
   }
   
-  // 默认返回UTC
-  return 'UTC';
+  // 默认返回北京时间
+  return 'Asia/Shanghai';
 }
 
 function isValidTimezone(timezone) {
@@ -5604,7 +5604,7 @@ const api = {
     if (path === '/dashboard/stats' && method === 'GET') {
       try {
         const subscriptions = await getAllSubscriptions(env);
-        const timezone = config?.TIMEZONE || 'UTC';
+    const timezone = config?.TIMEZONE || 'Asia/Shanghai';
         
         const rates = await getDynamicRates(env); // 获取动态汇率
         const monthlyExpense = calculateMonthlyExpense(subscriptions, timezone, rates);
@@ -7108,17 +7108,26 @@ async function sendEmailNotification(title, content, config) {
 
     console.log('[邮件通知] 开始发送邮件到: ' + config.EMAIL_TO);
 
-    const timezone = config?.TIMEZONE || 'UTC';
+    const timezone = config?.TIMEZONE || 'Asia/Shanghai';
     const currentTime = formatTimeInTimezone(new Date(), timezone, 'datetime');
 
     // 从 content 中提取备注信息
     const notesMatch = content.match(/备注[:：]\s*([^\n]+)/);
     const notesText = notesMatch ? notesMatch[1].trim() : '';
 
-    // 如果没有备注或备注为"无"，则显示默认提示
-    const bodyContent = notesText && notesText !== '无'
-      ? `<div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin: 0; border-left: 4px solid #667eea; font-size: 15px; line-height: 1.6; color: #374151;">${notesText.replace(/\n/g, '<br>')}</div>`
-      : '<p style="color: #6b7280; text-align: center; padding: 20px;">暂无备注信息</p>';
+    // 将备注内容按行分割，每行作为一个<p>标签
+    const formatNotesToParagraphs = (text) => {
+      if (!text || text === '无') return '<p style="color: #6b7280; text-align: center; padding: 20px;">暂无备注信息</p>';
+      
+      const lines = text.split('\n').filter(line => line.trim());
+      if (lines.length === 0) return '<p style="color: #6b7280; text-align: center; padding: 20px;">暂无备注信息</p>';
+      
+      return lines.map(line => 
+        `<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #4b5563;">${line.trim()}</p>`
+      ).join('');
+    };
+
+    const bodyContent = formatNotesToParagraphs(notesText);
 
     // 生成HTML邮件内容
     const htmlContent = `
@@ -7151,7 +7160,7 @@ async function sendEmailNotification(title, content, config) {
             .container { background-color: #374151 !important; }
             .header { background: linear-gradient(135deg, #4f46e5 0%, #6b21a8 100%) !important; }
             .header h1 { color: #f9fafb !important; }
-            .content div { background-color: #1f2937 !important; border-color: #4b5563 !important; color: #e5e7eb !important; }
+            .content p { color: #d1d5db !important; }
             .footer { background-color: #1f2937 !important; color: #6b7280 !important; border-color: #374151 !important; }
         }
     </style>
@@ -7270,7 +7279,7 @@ async function sendNotification(title, content, description, config) {
 async function checkExpiringSubscriptions(env) {
   try {
     const config = await getConfig(env);
-    const timezone = config?.TIMEZONE || 'UTC';
+    const timezone = config?.TIMEZONE || 'Asia/Shanghai';
     const currentTime = getCurrentTimeInTimezone(timezone);
     
     // 统一计算当天的零点时间，用于比较天数差异
@@ -7529,7 +7538,7 @@ const CryptoJS = {
 };
 
 function getCurrentTime(config) {
-  const timezone = config?.TIMEZONE || 'UTC';
+  const timezone = config?.TIMEZONE || 'Asia/Shanghai';
   const currentTime = getCurrentTimeInTimezone(timezone);
   const formatter = new Intl.DateTimeFormat('zh-CN', {
     timeZone: timezone,
@@ -7607,6 +7616,147 @@ export default {
       }
     }
 
+    // 邮件样式测试页面
+    if (url.pathname === '/test/email') {
+      const testTitle = '订阅到期/续费提醒';
+      const testNotes = '您的 Netflix 订阅将在3天后到期，请及时续费。\n当前套餐：高级版 (4屏)\n到期日期：2026-02-13';
+      const timezone = 'Asia/Shanghai';
+      const currentTime = new Date().toLocaleString('zh-CN', { timeZone: timezone });
+      
+      const formatNotesToParagraphs = (text) => {
+        if (!text || text.trim() === '') return '<p style="color: #6b7280; text-align: center; padding: 20px;">暂无备注信息</p>';
+        
+        const lines = text.split('\n').filter(line => line.trim());
+        if (lines.length === 0) return '<p style="color: #6b7280; text-align: center; padding: 20px;">暂无备注信息</p>';
+        
+        return lines.map(line => 
+          `<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #4b5563;">${line.trim()}</p>`
+        ).join('');
+      };
+
+      const bodyContent = formatNotesToParagraphs(testNotes);
+
+      const htmlContent = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${testTitle}</title>
+    <style>
+        :root {
+            --primary-color: #667eea;
+            --bg-light: #f8fafc;
+            --bg-dark: #1f2937;
+            --card-bg-light: #ffffff;
+            --card-bg-dark: #374151;
+            --text-primary-light: #1f2937;
+            --text-primary-dark: #f3f4f6;
+            --text-secondary-light: #6b7280;
+            --text-secondary-dark: #9ca3af;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #f3f4f6; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 30px; text-align: center; }
+        .header h1 { color: white; margin: 0; font-size: 20px; font-weight: 600; }
+        .content { padding: 30px; }
+        .footer { background-color: #f8fafc; padding: 16px 30px; text-align: center; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb; }
+        @media (prefers-color-scheme: dark) {
+            body { background-color: #1f2937 !important; }
+            .container { background-color: #374151 !important; }
+            .header { background: linear-gradient(135deg, #4f46e5 0%, #6b21a8 100%) !important; }
+            .header h1 { color: #f9fafb !important; }
+            .content p { color: #d1d5db !important; }
+            .footer { background-color: #1f2937 !important; color: #6b7280 !important; border-color: #374151 !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📅 ${testTitle}</h1>
+        </div>
+        <div class="content">
+            ${bodyContent}
+        </div>
+        <div class="footer">
+            <p>发送时间: ${currentTime}</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+      return new Response(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>邮件样式预览</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f0f0f0; }
+    .preview-container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+    .section { margin: 20px 0; }
+    .section h2 { color: #667eea; font-size: 16px; margin-bottom: 10px; }
+    .email-frame { border: 2px dashed #ccc; border-radius: 8px; overflow: hidden; margin: 10px 0; }
+    pre { background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; line-height: 1.5; }
+    .toggle-btn { background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin: 5px; }
+    .toggle-btn:hover { background: #5a67d8; }
+    .info { background: #e3f2fd; padding: 12px; border-radius: 4px; margin: 10px 0; color: #1976d2; }
+  </style>
+</head>
+<body>
+  <div class="preview-container">
+    <h1>📧 邮件样式测试预览</h1>
+    
+    <div class="info">
+      <strong>说明：</strong>此页面展示实际发送邮件的 HTML 样式。您可以在浏览器中预览邮件的显示效果。
+      <br>部署后访问 <code>/test/email</code> 查看此页面。
+    </div>
+
+    <div class="section">
+      <h2>📋 邮件标题</h2>
+      <p>${testTitle}</p>
+    </div>
+
+    <div class="section">
+      <h2>📝 邮件内容预览</h2>
+      <div class="email-frame">
+        ${htmlContent}
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>🔍 HTML 源代码</h2>
+      <pre>${htmlContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+    </div>
+
+    <div class="section">
+      <h2>📊 邮件样式特点</h2>
+      <ul>
+        <li>响应式设计，适配各种邮件客户端</li>
+        <li>支持深色模式 (prefers-color-scheme: dark)</li>
+        <li>渐变头部设计 (#667eea 到 #764ba2)</li>
+        <li>圆角卡片布局</li>
+        <li>左侧边框强调备注内容</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>🎨 设计细节</h2>
+      <ul>
+        <li>字体：系统默认无衬线字体</li>
+        <li>主色调：#667eea (紫色)</li>
+        <li>背景色：#f3f4f6 (浅灰)</li>
+        <li>内容区：白色背景，12px圆角</li>
+        <li>备注区：左侧4px紫色边框</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>`, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+
     if (url.pathname.startsWith('/api')) {
       return api.handleRequest(request, env, ctx);
     } else if (url.pathname.startsWith('/admin')) {
@@ -7618,7 +7768,7 @@ export default {
 
   async scheduled(event, env, ctx) {
     const config = await getConfig(env);
-    const timezone = config?.TIMEZONE || 'UTC';
+    const timezone = config?.TIMEZONE || 'Asia/Shanghai';
     const currentTime = getCurrentTimeInTimezone(timezone);
     console.log('[Workers] 定时任务触发 UTC:', new Date().toISOString(), timezone + ':', currentTime.toLocaleString('zh-CN', {timeZone: timezone}));
     await checkExpiringSubscriptions(env);
